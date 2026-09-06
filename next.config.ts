@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 const githubPagesBasePath =
   process.env.GITHUB_PAGES === 'true'
-    ? '/FY26-Optimization-Visual-Lab'
+    ? '/FY26-Optimization-Lab'
     : '';
 
 const nextConfig: NextConfig = {
