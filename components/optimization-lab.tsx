@@ -690,7 +690,7 @@ export function OptimizationLab() {
               className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
             >
               <Image
-                src="/rozias-logo.png"
+                src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/rozias-logo.png`}
                 alt="Rozias"
                 width="48"
                 height="48"

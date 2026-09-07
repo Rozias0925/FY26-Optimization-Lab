@@ -2,7 +2,7 @@
 
 這是一個用來理解 **loss geometry**、**optimizer trajectory** 與 **convergence** 的中英雙語互動式網站。整個實驗都在瀏覽器本機執行，不需要後端或資料庫。
 
-線上版本：[Optimization Visual Lab](https://rozias0925.github.io/FY26-Optimization-Visual-Lab/)
+線上版本：[Optimization Visual Lab](https://rozias0925.github.io/FY26-Optimization-Lab/)
 
 第一次打開專案時，請先看 **`從這裡開始.md`**。那份檔案只列出真正需要認識的內容，也會解釋哪些自動產生的資料夾可以完全忽略。
 

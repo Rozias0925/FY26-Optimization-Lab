@@ -7,7 +7,6 @@ const githubPagesBasePath =
 
 const nextConfig: NextConfig = {
   output: 'export',
-  basePath: githubPagesBasePath,
   assetPrefix: githubPagesBasePath || undefined,
   trailingSlash: true,
   images: { unoptimized: true },
