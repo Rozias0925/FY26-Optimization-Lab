@@ -345,6 +345,24 @@ export function SurfacePlot({
       context.arc(x, y, 10, 0, Math.PI * 2);
       context.stroke();
     });
+    objective.localMinima?.forEach((minimum) => {
+      const [x, y] = mapPoint(minimum);
+      context.fillStyle = '#fef3c7';
+      context.strokeStyle = '#b45309';
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(x, y, 5.25, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.save();
+      context.setLineDash([3, 2]);
+      context.strokeStyle = 'rgba(180, 83, 9, .55)';
+      context.lineWidth = 1.25;
+      context.beginPath();
+      context.arc(x, y, 9, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+    });
     objective.saddles?.forEach((saddle) => {
       const [x, y] = mapPoint(saddle);
       context.save();

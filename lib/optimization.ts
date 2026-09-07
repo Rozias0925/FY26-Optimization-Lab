@@ -4,7 +4,7 @@ export type ObjectiveId =
   | 'rosenbrock'
   | 'himmelblau'
   | 'double_well'
-  | 'rastrigin';
+  | 'three_hump_camel';
 export type OptimizerId = 'gd' | 'momentum' | 'adam' | 'newton' | 'bfgs';
 export type RunStatus =
   | 'converged'
@@ -48,6 +48,7 @@ export type Objective = {
   description: string;
   range: { x: [number, number]; y: [number, number] };
   minima: Point[];
+  localMinima?: Point[];
   saddles?: Point[];
   globalMinimumValue: number;
   value(point: Point): number;
@@ -174,33 +175,29 @@ export function createObjective(
     };
   }
 
-  const twoPi = 2 * Math.PI;
+  const localMinimumX = Math.sqrt((21 + Math.sqrt(91)) / 10);
+  const saddleX = Math.sqrt((21 - Math.sqrt(91)) / 10);
   return {
     id,
-    name: 'Rastrigin landscape',
-    formula: 'f(x,y) = 20+x²+y²−10cos(2πx)−10cos(2πy)',
-    concept: 'Local minima',
+    name: 'Three-hump camel',
+    formula: 'f(x,y) = 2x²−1.05x⁴+x⁶/6+xy+y²',
+    concept: 'Local vs. global minimum',
     description:
-      'A broad bowl is covered with suboptimal local minima. Convergence can therefore occur far away from the known global optimum.',
-    range: { x: [-5.12, 5.12], y: [-5.12, 5.12] },
+      'One global basin at the origin is flanked by two suboptimal local basins. A small gradient can therefore certify local convergence without global optimality.',
+    range: { x: [-2.4, 2.4], y: [-1.8, 1.8] },
     minima: [[0, 0]],
+    localMinima: [
+      [localMinimumX, -localMinimumX / 2],
+      [-localMinimumX, localMinimumX / 2],
+    ],
+    saddles: [
+      [saddleX, -saddleX / 2],
+      [-saddleX, saddleX / 2],
+    ],
     globalMinimumValue: 0,
-    value: ([x, y]) =>
-      20 +
-      x ** 2 +
-      y ** 2 -
-      10 * Math.cos(twoPi * x) -
-      10 * Math.cos(twoPi * y),
-    gradient: ([x, y]) => [
-      2 * x + 20 * Math.PI * Math.sin(twoPi * x),
-      2 * y + 20 * Math.PI * Math.sin(twoPi * y),
-    ],
-    hessian: ([x, y]) => [
-      2 + 40 * Math.PI ** 2 * Math.cos(twoPi * x),
-      0,
-      0,
-      2 + 40 * Math.PI ** 2 * Math.cos(twoPi * y),
-    ],
+    value: ([x, y]) => 2 * x ** 2 - 1.05 * x ** 4 + x ** 6 / 6 + x * y + y ** 2,
+    gradient: ([x, y]) => [4 * x - 4.2 * x ** 3 + x ** 5 + y, x + 2 * y],
+    hessian: ([x]) => [4 - 12.6 * x ** 2 + 5 * x ** 4, 1, 1, 2],
   };
 }
 

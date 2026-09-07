@@ -88,7 +88,7 @@ const defaultStartByObjective: Record<ObjectiveId, Point> = {
   rosenbrock: [-1.35, 1.7],
   himmelblau: [0.3, -0.6],
   double_well: [0.08, 0.12],
-  rastrigin: [3.2, -2.8],
+  three_hump_camel: [2.15, -1.05],
 };
 
 const optimizerInfo: Record<
@@ -287,17 +287,20 @@ const geometryInfo: Record<
       en: 'The origin has zero gradient but one negative Hessian eigenvalue, making it a saddle rather than a minimum. Two equally good wells show why a small gradient alone does not certify a minimizer.',
     },
   },
-  rastrigin: {
-    name: 'Rastrigin landscape',
-    formula: String.raw`f(x,y)=20+x^2+y^2-10\cos(2\pi x)-10\cos(2\pi y)`,
-    concept: { zh: 'Local minima', en: 'Local minima' },
+  three_hump_camel: {
+    name: 'Three-hump camel',
+    formula: String.raw`f(x,y)=2x^2-1.05x^4+\frac{x^6}{6}+xy+y^2`,
+    concept: {
+      zh: 'Local 與 global minimum',
+      en: 'Local vs. global minimum',
+    },
     selectorDescription: {
-      zh: '探索 optimizer 如何被困在遠離 global optimum 的位置。',
-      en: 'Explore how optimizers become trapped away from the global optimum.',
+      zh: '比較中心最佳解與兩側次佳 basin。',
+      en: 'Compare the central optimum with two suboptimal side basins.',
     },
     description: {
-      zh: '一個大 bowl 上布滿週期性小坑，只有原點是 known global optimum。演算法即使滿足局部停止條件，仍可能停在 objective value 較高的次佳 local minimum。',
-      en: 'A broad bowl is covered with periodic wells, while only the origin is the known global optimum. A locally converged optimizer can therefore remain at a suboptimal minimum.',
+      zh: '原點是唯一的 global minimum，左右兩側各有一個較差的 local minimum。只有三個清楚的 basins，能直接比較「已收斂」與「找到全域最佳解」為什麼不是同一件事。',
+      en: 'The origin is the unique global minimum, with one worse local minimum on each side. Three clean basins make it easy to see why convergence and global optimality are not the same claim.',
     },
   },
 };
@@ -382,20 +385,20 @@ const presets: {
   },
   {
     id: 'local-trap',
-    name: { zh: 'Local trap', en: 'Local trap' },
+    name: { zh: '次佳陷阱', en: 'Local trap' },
     note: {
       zh: '比較 final loss 與 known global minimum',
       en: 'Compare final loss with the known global minimum',
     },
     config: {
-      objective: 'rastrigin',
-      start: [3.2, -2.8],
+      objective: 'three_hump_camel',
+      start: [2.15, -1.05],
       optimizers: optimizerOrder,
-      learningRate: 0.003,
+      learningRate: 0.03,
       momentum: 0.82,
       conditionNumber: 24,
       rotation: 28,
-      maxIterations: 400,
+      maxIterations: 300,
     },
   },
 ];
@@ -493,10 +496,10 @@ function resultTakeaways(
     });
   }
 
-  if (config.objective === 'rastrigin' && converged.length > 0) {
-    const rastrigin = createObjective('rastrigin');
+  if (config.objective === 'three_hump_camel' && converged.length > 0) {
+    const camel = createObjective('three_hump_camel');
     const trapped = converged.filter(
-      (result) => result.finalLoss - rastrigin.globalMinimumValue > 1e-3,
+      (result) => result.finalLoss - camel.globalMinimumValue > 1e-3,
     );
     if (trapped.length > 0) {
       items.push({
@@ -507,8 +510,8 @@ function resultTakeaways(
             : 'Locally converged, but not globally optimal',
         text:
           lang === 'zh'
-            ? `${trapped.map((result) => `${optimizerInfo[result.optimizer].short} gap=${formatNumber(result.finalLoss - rastrigin.globalMinimumValue, 4)}`).join('；')}。移動起點再執行，觀察 trajectory 如何被附近的小坑捕捉。`
-            : `${trapped.map((result) => `${optimizerInfo[result.optimizer].short} gap=${formatNumber(result.finalLoss - rastrigin.globalMinimumValue, 4)}`).join('; ')}. Move the start and rerun to see how nearby wells capture each trajectory.`,
+            ? `${trapped.map((result) => `${optimizerInfo[result.optimizer].short} gap=${formatNumber(result.finalLoss - camel.globalMinimumValue, 4)}`).join('；')}。它們停在兩側的次佳 basin；把起點移向中心再執行，就能和 global minimum 直接比較。`
+            : `${trapped.map((result) => `${optimizerInfo[result.optimizer].short} gap=${formatNumber(result.finalLoss - camel.globalMinimumValue, 4)}`).join('; ')}. They stopped in a suboptimal side basin; move the start toward the center to compare it directly with the global minimum.`,
       });
     } else {
       items.push({
@@ -519,8 +522,8 @@ function resultTakeaways(
             : 'Reached the known global optimum',
         text:
           lang === 'zh'
-            ? '這次所有已收斂方法的 optimality gap 都接近 0。換到較遠起點再跑一次，可以和 local trapping 的結果直接比較。'
-            : 'Every converged method has an optimality gap near zero in this run. Try a more distant start to compare this with local trapping.',
+            ? '這次所有已收斂方法的 optimality gap 都接近 0。把起點移到左右外側再跑一次，可以和次佳 local minimum 直接比較。'
+            : 'Every converged method has an optimality gap near zero in this run. Try a start farther to either side to compare it with a suboptimal local minimum.',
       });
     }
   }
@@ -800,7 +803,7 @@ export function OptimizationLab() {
                 'rosenbrock',
                 'himmelblau',
                 'double_well',
-                'rastrigin',
+                'three_hump_camel',
               ],
             },
             start: {
@@ -1017,7 +1020,7 @@ export function OptimizationLab() {
                       'rosenbrock',
                       'himmelblau',
                       'double_well',
-                      'rastrigin',
+                      'three_hump_camel',
                     ] as ObjectiveId[]
                   ).map((id) => (
                     <button
@@ -1676,7 +1679,7 @@ export function OptimizationLab() {
                   'rosenbrock',
                   'himmelblau',
                   'double_well',
-                  'rastrigin',
+                  'three_hump_camel',
                 ] as ObjectiveId[]
               ).map((id, index) => {
                 const item = geometryInfo[id];
