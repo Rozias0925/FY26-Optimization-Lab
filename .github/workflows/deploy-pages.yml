@@ -45,6 +45,9 @@ jobs:
           GITHUB_PAGES: 'true'
           NEXT_PUBLIC_BASE_PATH: '/FY26-Optimization-Lab'
 
+      - name: Normalize GitHub Pages asset paths
+        run: pnpm prepare:github-pages
+
       - name: Prepare GitHub Pages artifact
         run: touch dist/client/.nojekyll
 
