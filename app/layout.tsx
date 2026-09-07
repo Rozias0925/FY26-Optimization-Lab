@@ -13,7 +13,8 @@ const publicBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 
 export const metadata: Metadata = {
   title: 'Optimization Visual Lab',
-  description: '用互動式數值實驗理解 Optimization geometry 與 convergence。',
+  description:
+    '互動比較五種 optimizer 在 conditioning、curved valleys、multiple basins、saddle points 與 local minima 下的收斂行為。',
   icons: {
     icon: [{ url: `${publicBasePath}/rozias-logo.png`, type: 'image/png' }],
     shortcut: `${publicBasePath}/rozias-logo.png`,

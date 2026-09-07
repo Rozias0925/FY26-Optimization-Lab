@@ -60,7 +60,7 @@ pnpm dev
 
 網站的數學核心，與畫面顯示分開：
 
-- Quadratic、Rosenbrock、Himmelblau objective functions
+- Quadratic、Rosenbrock、Himmelblau、Double-Well 與 Rastrigin objective functions
 - Function value、Gradient、Hessian
 - Gradient Descent、Momentum、Adam、Newton、BFGS
 - Convergence、divergence 與 numerical failure 判斷

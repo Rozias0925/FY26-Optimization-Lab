@@ -44,6 +44,7 @@ import {
   createObjective,
   runComparison,
   type ExperimentConfig,
+  type Objective,
   type ObjectiveId,
   type OptimizationResult,
   type OptimizerId,
@@ -81,6 +82,14 @@ const optimizerOrder: OptimizerId[] = [
   'newton',
   'bfgs',
 ];
+
+const defaultStartByObjective: Record<ObjectiveId, Point> = {
+  quadratic: [-4, 3.8],
+  rosenbrock: [-1.35, 1.7],
+  himmelblau: [0.3, -0.6],
+  double_well: [0.08, 0.12],
+  rastrigin: [3.2, -2.8],
+};
 
 const optimizerInfo: Record<
   OptimizerId,
@@ -215,12 +224,22 @@ const optimizerInfo: Record<
 
 const geometryInfo: Record<
   ObjectiveId,
-  { name: string; formula: string; concept: LocalText; description: LocalText }
+  {
+    name: string;
+    formula: string;
+    concept: LocalText;
+    selectorDescription: LocalText;
+    description: LocalText;
+  }
 > = {
   quadratic: {
     name: 'Quadratic bowl',
     formula: String.raw`f(\mathbf x)=\tfrac12\mathbf x^\top\mathbf Q\mathbf x,\qquad \kappa(\mathbf Q)=\frac{\lambda_{\max}}{\lambda_{\min}}`,
     concept: { zh: 'Conditioning', en: 'Conditioning' },
+    selectorDescription: {
+      zh: '探索異向性曲率如何影響收斂。',
+      en: 'Explore how anisotropic curvature affects convergence.',
+    },
     description: {
       zh: 'Q 的 eigenvectors 決定等高線方向，eigenvalues 決定各方向曲率。Condition number κ 越大，谷底越狹長，固定步長越難同時兼顧陡峭與平坦方向。',
       en: 'Eigenvectors of Q set contour directions and eigenvalues set curvature. A larger condition number κ creates a narrower valley, making one fixed step size unsuitable for both steep and flat directions.',
@@ -230,6 +249,10 @@ const geometryInfo: Record<
     name: 'Rosenbrock valley',
     formula: String.raw`f(x,y)=(1-x)^2+100(y-x^2)^2`,
     concept: { zh: 'Curved valley', en: 'Curved valley' },
+    selectorDescription: {
+      zh: '沿著狹窄的非線性 valley 追蹤 optimizer。',
+      en: 'Follow optimizers through a narrow nonlinear valley.',
+    },
     description: {
       zh: 'minimum 位在彎曲、狹窄的 valley 中。局部下降方向與通往 minimum 的長程方向並不一致，因此演算法必須一邊下降、一邊反覆修正方向。',
       en: 'The minimizer lies in a narrow curved valley. The local descent direction does not match the long-range direction to the solution, so the optimizer must descend while repeatedly correcting course.',
@@ -238,10 +261,43 @@ const geometryInfo: Record<
   himmelblau: {
     name: 'Himmelblau landscape',
     formula: String.raw`f(x,y)=(x^2+y-11)^2+(x+y^2-7)^2`,
-    concept: { zh: 'Multiple minima', en: 'Multiple minima' },
+    concept: { zh: 'Multiple basins', en: 'Multiple basins' },
+    selectorDescription: {
+      zh: '探索 initialization 如何決定最後抵達的 basin。',
+      en: 'Explore how initialization determines the destination.',
+    },
     description: {
       zh: '同一個 non-convex landscape 有四個 global minima 與多個 saddle regions。起點與方法會決定 trajectory 進入哪個 attraction basin。',
       en: 'One non-convex landscape contains four global minima and several saddle regions. Initialization and algorithm determine which basin of attraction receives the trajectory.',
+    },
+  },
+  double_well: {
+    name: 'Double-well geometry',
+    formula: String.raw`f(x,y)=x^4-x^2+y^2,\qquad x^\star=\left(\pm\frac{1}{\sqrt2},0\right)`,
+    concept: {
+      zh: 'Saddle 與負曲率',
+      en: 'Saddle & negative curvature',
+    },
+    selectorDescription: {
+      zh: '檢視 optimizer 在 saddle point 附近的行為。',
+      en: 'Examine optimizer behavior near saddle points.',
+    },
+    description: {
+      zh: '原點的 Gradient 為零，但 Hessian 有一個負 eigenvalue，因此它是 saddle 而不是 minimum。左右兩個 wells 具有相同的 global minimum；這個 geometry 能直接說明「Gradient 很小」不等於「已找到 minimum」。',
+      en: 'The origin has zero gradient but one negative Hessian eigenvalue, making it a saddle rather than a minimum. Two equally good wells show why a small gradient alone does not certify a minimizer.',
+    },
+  },
+  rastrigin: {
+    name: 'Rastrigin landscape',
+    formula: String.raw`f(x,y)=20+x^2+y^2-10\cos(2\pi x)-10\cos(2\pi y)`,
+    concept: { zh: 'Local minima', en: 'Local minima' },
+    selectorDescription: {
+      zh: '探索 optimizer 如何被困在遠離 global optimum 的位置。',
+      en: 'Explore how optimizers become trapped away from the global optimum.',
+    },
+    description: {
+      zh: '一個大 bowl 上布滿週期性小坑，只有原點是 known global optimum。演算法即使滿足局部停止條件，仍可能停在 objective value 較高的次佳 local minimum。',
+      en: 'A broad bowl is covered with periodic wells, while only the origin is the known global optimum. A locally converged optimizer can therefore remain at a suboptimal minimum.',
     },
   },
 };
@@ -290,7 +346,7 @@ const presets: {
   },
   {
     id: 'basins',
-    name: { zh: '多個答案', en: 'Multiple answers' },
+    name: { zh: '多個 Basin', en: 'Multiple basins' },
     note: {
       zh: '觀察 initialization 如何選擇 attraction basin',
       en: 'See how initialization selects an attraction basin',
@@ -306,6 +362,42 @@ const presets: {
       maxIterations: 300,
     },
   },
+  {
+    id: 'saddle',
+    name: { zh: 'Saddle point', en: 'Saddle point' },
+    note: {
+      zh: '比較 GD、Momentum 與 Newton 如何回應負曲率',
+      en: 'Compare how GD, Momentum, and Newton respond to negative curvature',
+    },
+    config: {
+      objective: 'double_well',
+      start: [0.08, 0.12],
+      optimizers: ['gd', 'momentum', 'newton'],
+      learningRate: 0.05,
+      momentum: 0.85,
+      conditionNumber: 24,
+      rotation: 28,
+      maxIterations: 300,
+    },
+  },
+  {
+    id: 'local-trap',
+    name: { zh: 'Local trap', en: 'Local trap' },
+    note: {
+      zh: '比較 final loss 與 known global minimum',
+      en: 'Compare final loss with the known global minimum',
+    },
+    config: {
+      objective: 'rastrigin',
+      start: [3.2, -2.8],
+      optimizers: optimizerOrder,
+      learningRate: 0.003,
+      momentum: 0.82,
+      conditionNumber: 24,
+      rotation: 28,
+      maxIterations: 400,
+    },
+  },
 ];
 
 const statusText: Record<RunStatus, LocalText> = {
@@ -314,6 +406,10 @@ const statusText: Record<RunStatus, LocalText> = {
   diverged: { zh: '發散', en: 'Diverged' },
   numerical_failure: { zh: '數值失敗', en: 'Numerical failure' },
   curvature_failure: { zh: '曲率失敗', en: 'Curvature failure' },
+  stationary_nonminimum: {
+    zh: '非極小駐點',
+    en: 'Non-minimum stationary point',
+  },
 };
 
 function local(text: LocalText, lang: Lang) {
@@ -375,6 +471,58 @@ function resultTakeaways(
           ? 'Hessian 接近 singular，反矩陣會放大誤差，因此實驗停止。實務上可使用 damping、trust region 或 modified Cholesky。'
           : 'The Hessian became nearly singular, so inversion would amplify error. Practical remedies include damping, trust regions, or modified Cholesky.',
     });
+  }
+
+  const stationary = results.filter(
+    (result) => result.status === 'stationary_nonminimum',
+  );
+  if (stationary.length > 0) {
+    const names = stationary
+      .map((result) => optimizerInfo[result.optimizer].short)
+      .join(', ');
+    items.push({
+      tone: 'warn',
+      title:
+        lang === 'zh'
+          ? 'Gradient 很小，但這裡不是 minimum'
+          : 'The gradient is small, but this is not a minimum',
+      text:
+        lang === 'zh'
+          ? `${names} 停在 Hessian 並非 positive definite 的 stationary point。這正是 saddle geometry 的重點：只檢查 ‖∇f‖ 無法證明已經找到 local minimum。`
+          : `${names} stopped at a stationary point whose Hessian is not positive definite. This is the key saddle lesson: checking ‖∇f‖ alone cannot certify a local minimum.`,
+    });
+  }
+
+  if (config.objective === 'rastrigin' && converged.length > 0) {
+    const rastrigin = createObjective('rastrigin');
+    const trapped = converged.filter(
+      (result) => result.finalLoss - rastrigin.globalMinimumValue > 1e-3,
+    );
+    if (trapped.length > 0) {
+      items.push({
+        tone: 'warn',
+        title:
+          lang === 'zh'
+            ? '已局部收斂，但沒有找到 global optimum'
+            : 'Locally converged, but not globally optimal',
+        text:
+          lang === 'zh'
+            ? `${trapped.map((result) => `${optimizerInfo[result.optimizer].short} gap=${formatNumber(result.finalLoss - rastrigin.globalMinimumValue, 4)}`).join('；')}。移動起點再執行，觀察 trajectory 如何被附近的小坑捕捉。`
+            : `${trapped.map((result) => `${optimizerInfo[result.optimizer].short} gap=${formatNumber(result.finalLoss - rastrigin.globalMinimumValue, 4)}`).join('; ')}. Move the start and rerun to see how nearby wells capture each trajectory.`,
+      });
+    } else {
+      items.push({
+        tone: 'good',
+        title:
+          lang === 'zh'
+            ? '找到 known global optimum'
+            : 'Reached the known global optimum',
+        text:
+          lang === 'zh'
+            ? '這次所有已收斂方法的 optimality gap 都接近 0。換到較遠起點再跑一次，可以和 local trapping 的結果直接比較。'
+            : 'Every converged method has an optimality gap near zero in this run. Try a more distant start to compare this with local trapping.',
+      });
+    }
   }
 
   if (converged.length > 0) {
@@ -529,9 +677,7 @@ export function OptimizationLab() {
   const maxDisplay = Math.max(1, ...results.map(getDisplaySpan));
   const completed =
     results.length > 0 && (showAll || animationTick >= maxDisplay);
-  const currentTimelineStep = Math.round(
-    showAll ? maxDisplay : animationTick,
-  );
+  const currentTimelineStep = Math.round(showAll ? maxDisplay : animationTick);
   const takeaways = useMemo(
     () => resultTakeaways(results, config, lang),
     [results, config, lang],
@@ -562,6 +708,7 @@ export function OptimizationLab() {
 
   const selectObjective = (id: ObjectiveId) => {
     setObjectiveId(id);
+    setStart(defaultStartByObjective[id]);
     setPlotView(makeView(id, conditionNumber, rotation));
     markDirty();
   };
@@ -648,7 +795,13 @@ export function OptimizationLab() {
           properties: {
             objective: {
               type: 'string',
-              enum: ['quadratic', 'rosenbrock', 'himmelblau'],
+              enum: [
+                'quadratic',
+                'rosenbrock',
+                'himmelblau',
+                'double_well',
+                'rastrigin',
+              ],
             },
             start: {
               type: 'array',
@@ -758,8 +911,8 @@ export function OptimizationLab() {
           </h1>
           <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-600">
             {lang === 'zh'
-              ? '先設定一個 loss surface 與起點，再觀看不同 optimizer 如何移動，最後用數學把路徑、收斂與失敗原因連起來。'
-              : 'Configure a loss surface and starting point, watch optimizers move, then connect every trajectory, convergence result, and failure to the mathematics behind it.'}
+              ? '透過互動式數值實驗，探索 GD、Momentum、Adam、Newton 與 BFGS 在 conditioning、curved valleys、multiple basins、saddle points 與 local minima 下的收斂行為。'
+              : 'Explore how GD, Momentum, Adam, Newton, and BFGS converge across conditioning, curved valleys, multiple basins, saddle points, and local minima.'}
           </p>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             <JourneyStep
@@ -829,7 +982,7 @@ export function OptimizationLab() {
                 </p>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               {presets.map((preset) => (
                 <button
                   key={preset.id}
@@ -857,9 +1010,15 @@ export function OptimizationLab() {
                     : 'Choose the geometry of the problem.'
                 }
               >
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {(
-                    ['quadratic', 'rosenbrock', 'himmelblau'] as ObjectiveId[]
+                    [
+                      'quadratic',
+                      'rosenbrock',
+                      'himmelblau',
+                      'double_well',
+                      'rastrigin',
+                    ] as ObjectiveId[]
                   ).map((id) => (
                     <button
                       key={id}
@@ -871,6 +1030,9 @@ export function OptimizationLab() {
                       </span>
                       <span className="mt-1 block text-xs text-slate-500">
                         {local(geometryInfo[id].concept, lang)}
+                      </span>
+                      <span className="mt-3 block text-xs leading-5 text-slate-500">
+                        {local(geometryInfo[id].selectorDescription, lang)}
                       </span>
                     </button>
                   ))}
@@ -1259,9 +1421,7 @@ export function OptimizationLab() {
                               lang === 'zh' ? '前一步' : 'Previous step'
                             }
                             disabled={currentTimelineStep <= 0}
-                            onClick={() =>
-                              seekToStep(currentTimelineStep - 1)
-                            }
+                            onClick={() => seekToStep(currentTimelineStep - 1)}
                           >
                             <ChevronLeft />
                           </Button>
@@ -1289,9 +1449,7 @@ export function OptimizationLab() {
                             variant="outline"
                             aria-label={lang === 'zh' ? '後一步' : 'Next step'}
                             disabled={currentTimelineStep >= maxDisplay}
-                            onClick={() =>
-                              seekToStep(currentTimelineStep + 1)
-                            }
+                            onClick={() => seekToStep(currentTimelineStep + 1)}
                           >
                             <ChevronRight />
                           </Button>
@@ -1439,6 +1597,7 @@ export function OptimizationLab() {
                   <ResultCard
                     key={result.optimizer}
                     result={result}
+                    objective={objective}
                     lang={lang}
                   />
                 ))}
@@ -1510,29 +1669,35 @@ export function OptimizationLab() {
                 </MathFormula>
               </div>
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {(['quadratic', 'rosenbrock', 'himmelblau'] as ObjectiveId[]).map(
-                (id, index) => {
-                  const item = geometryInfo[id];
-                  return (
-                    <article
-                      key={id}
-                      className={`rounded-2xl border p-5 ${objectiveId === id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-slate-50'}`}
-                    >
-                      <span className="font-mono text-xs text-slate-400">
-                        {['一', '二', '三'][index]}
-                      </span>
-                      <p className="mt-7 text-xs font-semibold uppercase tracking-[0.12em] text-teal-700">
-                        {local(item.concept, lang)}
-                      </p>
-                      <h3 className="mt-2 font-semibold">{item.name}</h3>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
-                        {local(item.description, lang)}
-                      </p>
-                    </article>
-                  );
-                },
-              )}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {(
+                [
+                  'quadratic',
+                  'rosenbrock',
+                  'himmelblau',
+                  'double_well',
+                  'rastrigin',
+                ] as ObjectiveId[]
+              ).map((id, index) => {
+                const item = geometryInfo[id];
+                return (
+                  <article
+                    key={id}
+                    className={`rounded-2xl border p-5 ${objectiveId === id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-slate-50'}`}
+                  >
+                    <span className="font-mono text-xs text-slate-400">
+                      {['一', '二', '三', '四', '五'][index]}
+                    </span>
+                    <p className="mt-7 text-xs font-semibold uppercase tracking-[0.12em] text-teal-700">
+                      {local(item.concept, lang)}
+                    </p>
+                    <h3 className="mt-2 font-semibold">{item.name}</h3>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                      {local(item.description, lang)}
+                    </p>
+                  </article>
+                );
+              })}
             </div>
           </div>
 
@@ -1917,12 +2082,24 @@ function OptimizerMotionGraphic({
 
 function ResultCard({
   result,
+  objective,
   lang,
 }: {
   result: OptimizationResult;
+  objective: Objective;
   lang: Lang;
 }) {
   const info = optimizerInfo[result.optimizer];
+  const optimalityGap = Math.max(
+    0,
+    result.finalLoss - objective.globalMinimumValue,
+  );
+  const reachedLocalMinimum = result.converged && optimalityGap > 1e-3;
+  const displayedStatus = reachedLocalMinimum
+    ? lang === 'zh'
+      ? '次佳 local minimum'
+      : 'Suboptimal local minimum'
+    : local(statusText[result.status], lang);
   return (
     <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between gap-3">
@@ -1934,9 +2111,9 @@ function ResultCard({
           {info.short}
         </span>
         <span
-          className={`font-mono text-[11px] ${result.converged ? 'text-emerald-700' : result.status === 'diverged' ? 'text-rose-700' : 'text-amber-700'}`}
+          className={`font-mono text-[11px] ${reachedLocalMinimum ? 'text-amber-700' : result.converged ? 'text-emerald-700' : result.status === 'diverged' ? 'text-rose-700' : 'text-amber-700'}`}
         >
-          {local(statusText[result.status], lang)}
+          {displayedStatus}
         </span>
       </div>
       <div className="mt-6 grid grid-cols-2 gap-x-3 gap-y-5">
@@ -1958,6 +2135,11 @@ function ResultCard({
           label="Final position"
           value={`(${result.finalPosition.map((value) => formatNumber(value, 2)).join(', ')})`}
         />
+        <Metric
+          label="Known global minimum"
+          value={formatNumber(objective.globalMinimumValue, 4)}
+        />
+        <Metric label="Optimality gap" value={formatNumber(optimalityGap, 4)} />
       </div>
     </article>
   );

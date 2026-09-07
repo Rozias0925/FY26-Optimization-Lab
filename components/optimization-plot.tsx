@@ -174,8 +174,8 @@ export function SurfacePlot({
     ];
     const columns = 92;
     const rows = 92;
-    const values: number[][] = [];
-    const flat: number[] = [];
+    const rawValues: number[][] = [];
+    const rawFlat: number[] = [];
 
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, size.width, size.height);
@@ -185,12 +185,17 @@ export function SurfacePlot({
       for (let column = 0; column <= columns; column += 1) {
         const x = view.x[0] + (column / columns) * (view.x[1] - view.x[0]);
         const y = view.y[1] - (row / rows) * (view.y[1] - view.y[0]);
-        const value = Math.log1p(Math.max(0, objective.value([x, y])));
+        const value = objective.value([x, y]);
         rowValues.push(value);
-        flat.push(value);
+        rawFlat.push(value);
       }
-      values.push(rowValues);
+      rawValues.push(rowValues);
     }
+    const sampledMinimum = Math.min(...rawFlat);
+    const values = rawValues.map((row) =>
+      row.map((value) => Math.log1p(Math.max(0, value - sampledMinimum))),
+    );
+    const flat = values.flat();
     const ordered = [...flat].sort((a, b) => a - b);
     const lower = ordered[Math.floor(ordered.length * 0.015)] ?? 0;
     const upper = ordered[Math.floor(ordered.length * 0.9)] ?? 1;
@@ -339,6 +344,18 @@ export function SurfacePlot({
       context.beginPath();
       context.arc(x, y, 10, 0, Math.PI * 2);
       context.stroke();
+    });
+    objective.saddles?.forEach((saddle) => {
+      const [x, y] = mapPoint(saddle);
+      context.save();
+      context.translate(x, y);
+      context.rotate(Math.PI / 4);
+      context.fillStyle = '#ffffff';
+      context.strokeStyle = '#7c3aed';
+      context.lineWidth = 2.25;
+      context.fillRect(-5, -5, 10, 10);
+      context.strokeRect(-5, -5, 10, 10);
+      context.restore();
     });
 
     results.forEach((result) => {
@@ -508,16 +525,16 @@ export function LossPlot({
       1,
       ...results.map((result) => result.losses.length - 1),
     );
+    const transformLoss = (value: number) =>
+      logScale ? Math.sign(value) * Math.log10(1 + Math.abs(value)) : value;
+    const inverseLoss = (value: number) =>
+      logScale ? Math.sign(value) * (10 ** Math.abs(value) - 1) : value;
     const allValues = results.flatMap((result) =>
-      result.losses
-        .filter(Number.isFinite)
-        .map((value) =>
-          logScale ? Math.log10(Math.max(value, 1e-12)) : value,
-        ),
+      result.losses.filter(Number.isFinite).map(transformLoss),
     );
     const rawMin = Math.min(...allValues, 0);
-    const rawMax = Math.max(...allValues, 1);
-    const min = logScale ? rawMin : 0;
+    const rawMax = Math.max(...allValues, logScale ? 0 : 1);
+    const min = rawMin;
     const max = rawMax === min ? min + 1 : rawMax;
     const xFor = (index: number) =>
       margin.left + (index / maxIterations) * width;
@@ -537,7 +554,7 @@ export function LossPlot({
       context.textAlign = 'right';
       context.textBaseline = 'middle';
       context.fillText(
-        logScale ? `10^${labelValue.toFixed(1)}` : labelValue.toExponential(1),
+        inverseLoss(labelValue).toExponential(1),
         margin.left - 8,
         y,
       );
@@ -570,7 +587,7 @@ export function LossPlot({
       context.lineWidth = 2.3;
       context.beginPath();
       visibleLosses.forEach((loss, index) => {
-        const transformed = logScale ? Math.log10(Math.max(loss, 1e-12)) : loss;
+        const transformed = transformLoss(loss);
         const plottedStep =
           fraction > 0 && index === visibleLosses.length - 1
             ? exactStep

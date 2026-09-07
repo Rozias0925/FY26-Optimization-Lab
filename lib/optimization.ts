@@ -1,12 +1,18 @@
 export type Point = [number, number];
-export type ObjectiveId = 'quadratic' | 'rosenbrock' | 'himmelblau';
+export type ObjectiveId =
+  | 'quadratic'
+  | 'rosenbrock'
+  | 'himmelblau'
+  | 'double_well'
+  | 'rastrigin';
 export type OptimizerId = 'gd' | 'momentum' | 'adam' | 'newton' | 'bfgs';
 export type RunStatus =
   | 'converged'
   | 'max_iterations'
   | 'diverged'
   | 'numerical_failure'
-  | 'curvature_failure';
+  | 'curvature_failure'
+  | 'stationary_nonminimum';
 
 export type OptimizationResult = {
   optimizer: OptimizerId;
@@ -42,6 +48,8 @@ export type Objective = {
   description: string;
   range: { x: [number, number]; y: [number, number] };
   minima: Point[];
+  saddles?: Point[];
+  globalMinimumValue: number;
   value(point: Point): number;
   gradient(point: Point): Point;
   hessian(point: Point): [number, number, number, number];
@@ -79,6 +87,7 @@ export function createObjective(
         'The condition number measures the gap between steep and shallow directions. A larger gap makes first-order methods zig-zag across the valley.',
       range: { x: [-5, 5], y: [-5, 5] },
       minima: [[0, 0]],
+      globalMinimumValue: 0,
       value: (p) => 0.5 * dot(p, matVec(q, p)),
       gradient: (p) => matVec(q, p),
       hessian: () => q,
@@ -97,6 +106,7 @@ export function createObjective(
         'The minimum sits inside a narrow bending valley. An optimizer must move downhill while repeatedly correcting its direction.',
       range: { x: [-2.2, 2.2], y: [-1.2, 3.2] },
       minima: [[1, 1]],
+      globalMinimumValue: 0,
       value: ([x, y]) => (a - x) ** 2 + b * (y - x * x) ** 2,
       gradient: ([x, y]) => [
         2 * (x - a) - 4 * b * x * (y - x * x),
@@ -111,31 +121,85 @@ export function createObjective(
     };
   }
 
+  if (id === 'himmelblau') {
+    return {
+      id,
+      name: 'Himmelblau landscape',
+      formula: 'f(x,y) = (x²+y−11)² + (x+y²−7)²',
+      concept: 'Multiple basins',
+      description:
+        'Four attraction basins share the same landscape. The starting point can change which global minimum the optimizer discovers.',
+      range: { x: [-5.5, 5.5], y: [-5.5, 5.5] },
+      minima: [
+        [3, 2],
+        [-2.805, 3.131],
+        [-3.779, -3.283],
+        [3.584, -1.848],
+      ],
+      globalMinimumValue: 0,
+      value: ([x, y]) => (x * x + y - 11) ** 2 + (x + y * y - 7) ** 2,
+      gradient: ([x, y]) => {
+        const a = x * x + y - 11;
+        const b = x + y * y - 7;
+        return [4 * x * a + 2 * b, 2 * a + 4 * y * b];
+      },
+      hessian: ([x, y]) => [
+        12 * x * x + 4 * y - 42,
+        4 * (x + y),
+        4 * (x + y),
+        4 * x + 12 * y * y - 26,
+      ],
+    };
+  }
+
+  if (id === 'double_well') {
+    const minimumX = 1 / Math.sqrt(2);
+    return {
+      id,
+      name: 'Double-well geometry',
+      formula: 'f(x,y) = x⁴−x²+y²',
+      concept: 'Saddle & negative curvature',
+      description:
+        'A saddle at the origin separates two equally good wells. Small gradients near the saddle do not imply that a minimum has been found.',
+      range: { x: [-1.6, 1.6], y: [-1.4, 1.4] },
+      minima: [
+        [-minimumX, 0],
+        [minimumX, 0],
+      ],
+      saddles: [[0, 0]],
+      globalMinimumValue: -0.25,
+      value: ([x, y]) => x ** 4 - x ** 2 + y ** 2,
+      gradient: ([x, y]) => [4 * x ** 3 - 2 * x, 2 * y],
+      hessian: ([x]) => [12 * x ** 2 - 2, 0, 0, 2],
+    };
+  }
+
+  const twoPi = 2 * Math.PI;
   return {
     id,
-    name: 'Himmelblau landscape',
-    formula: 'f(x,y) = (x²+y−11)² + (x+y²−7)²',
-    concept: 'Multiple minima',
+    name: 'Rastrigin landscape',
+    formula: 'f(x,y) = 20+x²+y²−10cos(2πx)−10cos(2πy)',
+    concept: 'Local minima',
     description:
-      'Four attraction basins share the same landscape. The starting point can change which valid minimum the optimizer discovers.',
-    range: { x: [-5.5, 5.5], y: [-5.5, 5.5] },
-    minima: [
-      [3, 2],
-      [-2.805, 3.131],
-      [-3.779, -3.283],
-      [3.584, -1.848],
+      'A broad bowl is covered with suboptimal local minima. Convergence can therefore occur far away from the known global optimum.',
+    range: { x: [-5.12, 5.12], y: [-5.12, 5.12] },
+    minima: [[0, 0]],
+    globalMinimumValue: 0,
+    value: ([x, y]) =>
+      20 +
+      x ** 2 +
+      y ** 2 -
+      10 * Math.cos(twoPi * x) -
+      10 * Math.cos(twoPi * y),
+    gradient: ([x, y]) => [
+      2 * x + 20 * Math.PI * Math.sin(twoPi * x),
+      2 * y + 20 * Math.PI * Math.sin(twoPi * y),
     ],
-    value: ([x, y]) => (x * x + y - 11) ** 2 + (x + y * y - 7) ** 2,
-    gradient: ([x, y]) => {
-      const a = x * x + y - 11;
-      const b = x + y * y - 7;
-      return [4 * x * a + 2 * b, 2 * a + 4 * y * b];
-    },
     hessian: ([x, y]) => [
-      12 * x * x + 4 * y - 42,
-      4 * (x + y),
-      4 * (x + y),
-      4 * x + 12 * y * y - 26,
+      2 + 40 * Math.PI ** 2 * Math.cos(twoPi * x),
+      0,
+      0,
+      2 + 40 * Math.PI ** 2 * Math.cos(twoPi * y),
     ],
   };
 }
@@ -220,7 +284,9 @@ export function runOptimizer(
       break;
     }
     if (gradientNorm < tolerance) {
-      status = 'converged';
+      status = isPositiveDefinite(objective.hessian(point))
+        ? 'converged'
+        : 'stationary_nonminimum';
       break;
     }
 
@@ -350,7 +416,11 @@ export function runOptimizer(
     const finalGradient = objective.gradient(point);
     counts.g += 1;
     gradientNorms.push(norm(finalGradient));
-    if (norm(finalGradient) < tolerance) status = 'converged';
+    if (norm(finalGradient) < tolerance) {
+      status = isPositiveDefinite(objective.hessian(point))
+        ? 'converged'
+        : 'stationary_nonminimum';
+    }
   }
 
   return makeResult(
