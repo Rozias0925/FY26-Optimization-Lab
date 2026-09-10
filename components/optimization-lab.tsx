@@ -1805,10 +1805,15 @@ export function OptimizationLab() {
       </section>
 
       <footer className="border-t border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-        Optimization Visual Lab ·{' '}
-        {lang === 'zh'
-          ? '互動式數值最佳化實驗'
-          : 'Interactive numerical optimization'}
+        <p>
+          Optimization Visual Lab ·{' '}
+          {lang === 'zh'
+            ? '互動式數值最佳化實驗'
+            : 'Interactive numerical optimization'}
+        </p>
+        <p className="mt-3 text-base font-medium text-slate-700">
+          © 2026 文君豪. All Rights Reserved.
+        </p>
       </footer>
     </main>
   );
