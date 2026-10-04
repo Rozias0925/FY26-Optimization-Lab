@@ -42,6 +42,7 @@ import {
 } from '@/components/optimization-plot';
 import {
   createObjective,
+  GRADIENT_TOLERANCE,
   runComparison,
   type ExperimentConfig,
   type Objective,
@@ -54,6 +55,12 @@ import {
 
 type Lang = 'zh' | 'en';
 type LocalText = { zh: string; en: string };
+type ExperimentSnapshot = {
+  config: ExperimentConfig;
+  view: PlotView;
+  results: OptimizationResult[];
+};
+const OPTIMALITY_GAP_TOLERANCE = 1e-3;
 
 type ModelContextTool = {
   name: string;
@@ -499,7 +506,8 @@ function resultTakeaways(
   if (config.objective === 'three_hump_camel' && converged.length > 0) {
     const camel = createObjective('three_hump_camel');
     const trapped = converged.filter(
-      (result) => result.finalLoss - camel.globalMinimumValue > 1e-3,
+      (result) =>
+        result.finalLoss - camel.globalMinimumValue > OPTIMALITY_GAP_TOLERANCE,
     );
     if (trapped.length > 0) {
       items.push({
@@ -529,19 +537,48 @@ function resultTakeaways(
   }
 
   if (converged.length > 0) {
-    const fastest = [...converged].sort(
-      (a, b) => a.iterations - b.iterations,
-    )[0];
+    const fewestIterations = Math.min(
+      ...converged.map((result) => result.iterations),
+    );
+    const fewest = converged.filter(
+      (result) => result.iterations === fewestIterations,
+    );
+    const names = fewest
+      .map((result) => optimizerInfo[result.optimizer].short)
+      .join(lang === 'zh' ? '、' : ', ');
+    const objective = createObjective(
+      config.objective,
+      config.conditionNumber,
+      config.rotation,
+    );
+    const quality = fewest
+      .map((result) => {
+        const gap = Math.max(
+          0,
+          result.finalLoss - objective.globalMinimumValue,
+        );
+        const localMinimum = gap > OPTIMALITY_GAP_TOLERANCE;
+        return lang === 'zh'
+          ? `${optimizerInfo[result.optimizer].short}：${localMinimum ? '次佳 local minimum' : '接近已知 global minimum'}（gap=${formatNumber(gap, 4)}）`
+          : `${optimizerInfo[result.optimizer].short}: ${localMinimum ? 'suboptimal local minimum' : 'near the known global minimum'} (gap=${formatNumber(gap, 4)})`;
+      })
+      .join(lang === 'zh' ? '；' : '; ');
+    const costs = fewest
+      .map(
+        (result) =>
+          `${optimizerInfo[result.optimizer].short} f/g/H = ${result.functionEvaluations}/${result.gradientEvaluations}/${result.hessianEvaluations}`,
+      )
+      .join(lang === 'zh' ? '；' : '; ');
     items.push({
-      tone: 'good',
+      tone: 'info',
       title:
         lang === 'zh'
-          ? `最少 iterations：${optimizerInfo[fastest.optimizer].short}`
-          : `Fewest iterations: ${optimizerInfo[fastest.optimizer].short}`,
+          ? `最少迭代次數${fewest.length > 1 ? '（並列）' : ''}：${names}`
+          : `Fewest iterations${fewest.length > 1 ? ' (tie)' : ''}: ${names}`,
       text:
         lang === 'zh'
-          ? `${fastest.iterations} 步達到停止條件，但「步數少」不等於「計算最便宜」：它用了 ${fastest.functionEvaluations} 次 function、${fastest.gradientEvaluations} 次 gradient、${fastest.hessianEvaluations} 次 Hessian 評估。`
-          : `It met the stopping rule in ${fastest.iterations} steps, but fewer steps do not always mean lower cost: it used ${fastest.functionEvaluations} function, ${fastest.gradientEvaluations} gradient, and ${fastest.hessianEvaluations} Hessian evaluations.`,
+          ? `在已收斂的方法中，${names} 用 ${fewestIterations} 步達到本站停止條件。${quality}。步數少不等於解最好，也不等於計算最便宜。演算法評估次數：${costs}（f：function、g：gradient、H：Hessian）。接近已知全域值以 gap ≤ ${formatNumber(OPTIMALITY_GAP_TOLERANCE)} 判讀。`
+          : `Among converged methods, ${names} met this lab's stopping rule in ${fewestIterations} steps. ${quality}. Fewer steps mean neither a better solution nor lower cost. Algorithm evaluations: ${costs} (f: function, g: gradient, H: Hessian). Proximity to the known global value uses gap ≤ ${formatNumber(OPTIMALITY_GAP_TOLERANCE)}.`,
     });
   }
 
@@ -637,7 +674,7 @@ export function OptimizationLab() {
   const [plotView, setPlotView] = useState<PlotView>(() =>
     makeView('quadratic', 55, 32),
   );
-  const [results, setResults] = useState<OptimizationResult[]>([]);
+  const [experiment, setExperiment] = useState<ExperimentSnapshot | null>(null);
   const [animationTick, setAnimationTick] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -677,13 +714,28 @@ export function OptimizationLab() {
     ],
   );
 
+  const results = experiment?.results ?? [];
+  const resultConfig = experiment?.config ?? config;
+  const resultObjective = useMemo(
+    () =>
+      createObjective(
+        resultConfig.objective,
+        resultConfig.conditionNumber,
+        resultConfig.rotation,
+      ),
+    [
+      resultConfig.objective,
+      resultConfig.conditionNumber,
+      resultConfig.rotation,
+    ],
+  );
   const maxDisplay = Math.max(1, ...results.map(getDisplaySpan));
   const completed =
     results.length > 0 && (showAll || animationTick >= maxDisplay);
   const currentTimelineStep = Math.round(showAll ? maxDisplay : animationTick);
   const takeaways = useMemo(
-    () => resultTakeaways(results, config, lang),
-    [results, config, lang],
+    () => resultTakeaways(results, resultConfig, lang),
+    [results, resultConfig, lang],
   );
 
   const markDirty = () => {
@@ -727,16 +779,21 @@ export function OptimizationLab() {
     setRotation(next.rotation);
     setMaxIterations(next.maxIterations ?? 300);
     setPlotView(makeView(next.objective, next.conditionNumber, next.rotation));
-    setResults([]);
-    setPlaying(false);
-    setCountdown(null);
-    setDirty(false);
+    markDirty();
   };
 
   const runExperiment = () => {
     if (selected.length === 0) return;
-    const nextResults = runComparison(config);
-    setResults(nextResults);
+    const runConfig: ExperimentConfig = {
+      ...config,
+      start: [...config.start],
+      optimizers: [...config.optimizers],
+    };
+    setExperiment({
+      config: runConfig,
+      view: { x: [...plotView.x], y: [...plotView.y] },
+      results: runComparison(runConfig),
+    });
     setAnimationTick(0);
     setShowAll(false);
     setPlaying(false);
@@ -1292,19 +1349,20 @@ export function OptimizationLab() {
               </div>
             ) : (
               <>
+                <RunContext config={resultConfig} lang={lang} dirty={dirty} />
                 <div
                   ref={demoStageRef}
                   className="grid scroll-mt-20 gap-4 xl:grid-cols-[minmax(0,520px)_minmax(0,1fr)_minmax(0,1fr)] xl:items-stretch"
                 >
                   <div className="relative mx-auto w-full max-w-[min(520px,78vh)] xl:mx-0">
                     <SurfacePlot
-                      objective={objective}
+                      objective={resultObjective}
                       results={results}
-                      start={start}
+                      start={resultConfig.start}
                       animationTick={animationTick}
                       showAll={showAll}
                       interactive={false}
-                      view={plotView}
+                      view={experiment?.view ?? plotView}
                       ariaLabel={
                         lang === 'zh'
                           ? '顯示 optimizer 收斂路徑的 loss surface 熱力圖。'
@@ -1489,13 +1547,6 @@ export function OptimizationLab() {
                           </SelectContent>
                         </Select>
                       </div>
-                      {dirty && (
-                        <p className="mt-4 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                          {lang === 'zh'
-                            ? '上方參數已改變；請重新執行以更新結果。'
-                            : 'Parameters changed above; rerun to update the results.'}
-                        </p>
-                      )}
                     </div>
                   </aside>
                 </div>
@@ -1506,8 +1557,8 @@ export function OptimizationLab() {
                       <h3 className="font-semibold">Loss vs. iteration</h3>
                       <p className="mt-1 text-sm text-slate-500">
                         {lang === 'zh'
-                          ? '越快向下、越早變平，代表越快接近停止條件。'
-                          : 'Earlier, steeper descent usually means faster progress toward the stopping rule.'}
+                          ? '曲線下降表示目標值降低；變平不代表已收斂，還需查看最終梯度範數與停止狀態。'
+                          : 'A falling curve means a lower objective value. A flat curve alone does not show convergence; check the final gradient norm and stopping status.'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -1595,16 +1646,24 @@ export function OptimizationLab() {
                 : 'Result ledger for this experiment'}
             </h3>
             {results.length > 0 ? (
-              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                {results.map((result) => (
-                  <ResultCard
-                    key={result.optimizer}
-                    result={result}
-                    objective={objective}
-                    lang={lang}
-                  />
-                ))}
-              </div>
+              <>
+                <RunContext config={resultConfig} lang={lang} dirty={dirty} />
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  {lang === 'zh'
+                    ? '本站先以 ‖∇f‖ 小於梯度閾值檢查駐點，再檢查 Hessian 是否正定；梯度很小也可能停在 saddle，而非 minimum。'
+                    : 'This lab checks stationarity using the gradient threshold, then requires a positive-definite Hessian. A small gradient can also occur at a saddle, not a minimum.'}
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  {results.map((result) => (
+                    <ResultCard
+                      key={result.optimizer}
+                      result={result}
+                      objective={resultObjective}
+                      lang={lang}
+                    />
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
                 {lang === 'zh'
@@ -1664,11 +1723,11 @@ export function OptimizationLab() {
                   : 'Why does the landscape change the path?'}
               </h2>
               <p className="mt-5 text-base leading-8 text-slate-600">
-                {local(geometryInfo[objectiveId].description, lang)}
+                {local(geometryInfo[resultConfig.objective].description, lang)}
               </p>
               <div className="mt-6 overflow-x-auto rounded-2xl border border-teal-200 bg-teal-50 p-5">
                 <MathFormula display className="text-lg text-slate-900">
-                  {geometryInfo[objectiveId].formula}
+                  {geometryInfo[resultConfig.objective].formula}
                 </MathFormula>
               </div>
             </div>
@@ -1686,7 +1745,7 @@ export function OptimizationLab() {
                 return (
                   <article
                     key={id}
-                    className={`rounded-2xl border p-5 ${objectiveId === id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-slate-50'}`}
+                    className={`rounded-2xl border p-5 ${resultConfig.objective === id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-slate-50'}`}
                   >
                     <span className="font-mono text-xs text-slate-400">
                       {['一', '二', '三', '四', '五'][index]}
@@ -2088,6 +2147,36 @@ function OptimizerMotionGraphic({
   );
 }
 
+function RunContext({
+  config,
+  lang,
+  dirty,
+}: {
+  config: ExperimentConfig;
+  lang: Lang;
+  dirty: boolean;
+}) {
+  return (
+    <div
+      className={`my-4 rounded-xl border px-4 py-3 text-sm leading-6 ${dirty ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+    >
+      <p>
+        {lang === 'zh' ? '本次結果' : 'Displayed run'}：
+        {geometryInfo[config.objective].name} ·{' '}
+        {lang === 'zh' ? '起點' : 'Start'} (
+        {config.start.map((value) => formatNumber(value, 2)).join(', ')})
+      </p>
+      {dirty && (
+        <p role="status">
+          {lang === 'zh'
+            ? '上方設定已修改。這裡仍顯示上次執行的地形、路徑與診斷；按「執行實驗」才會更新結果。'
+            : 'Setup has changed. The landscape, paths, and diagnostics still show the previous run; press “Run experiment” to update them.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ResultCard({
   result,
   objective,
@@ -2102,7 +2191,9 @@ function ResultCard({
     0,
     result.finalLoss - objective.globalMinimumValue,
   );
-  const reachedLocalMinimum = result.converged && optimalityGap > 1e-3;
+  const reachedLocalMinimum =
+    result.converged && optimalityGap > OPTIMALITY_GAP_TOLERANCE;
+  const finalGradientNorm = result.gradientNorms.at(-1) ?? Number.NaN;
   const displayedStatus = reachedLocalMinimum
     ? lang === 'zh'
       ? '次佳 local minimum'
@@ -2127,6 +2218,20 @@ function ResultCard({
       <div className="mt-6 grid grid-cols-2 gap-x-3 gap-y-5">
         <Metric label="Iterations" value={String(result.iterations)} />
         <Metric label="Final loss" value={formatNumber(result.finalLoss)} />
+        <Metric
+          label={lang === 'zh' ? '最終 ‖∇f‖' : 'Final ‖∇f‖'}
+          value={
+            Number.isFinite(finalGradientNorm)
+              ? formatNumber(finalGradientNorm)
+              : lang === 'zh'
+                ? '非有限值'
+                : 'Non-finite'
+          }
+        />
+        <Metric
+          label={lang === 'zh' ? '梯度閾值' : 'Gradient threshold'}
+          value={`< ${formatNumber(GRADIENT_TOLERANCE)}`}
+        />
         <Metric
           label="Function evals"
           value={String(result.functionEvaluations)}

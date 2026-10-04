@@ -1,4 +1,5 @@
 export type Point = [number, number];
+export const GRADIENT_TOLERANCE = 1e-5;
 export type ObjectiveId =
   | 'quadratic'
   | 'rosenbrock'
@@ -256,7 +257,7 @@ export function runOptimizer(
   learningRate: number,
   momentum = 0.9,
   maxIterations = 300,
-  tolerance = 1e-5,
+  tolerance = GRADIENT_TOLERANCE,
 ): OptimizationResult {
   let point: Point = [...start];
   let loss = objective.value(point);
