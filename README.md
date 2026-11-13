@@ -1,99 +1,54 @@
 # Optimization Visual Lab
 
-這是一個用來理解 **loss geometry**、**optimizer trajectory** 與 **convergence** 的中英雙語互動式網站。整個實驗都在瀏覽器本機執行，不需要後端或資料庫。
+A bilingual, browser-based laboratory for understanding how the shape of an objective function changes an optimization algorithm's path and stopping behavior. It compares five optimizers on five two-dimensional landscapes, connecting mathematical update rules with trajectories, loss curves, and numerical diagnostics. The numerical implementation and website source are included in this repository.
 
-線上版本：[Optimization Visual Lab](https://rozias0925.github.io/FY26-Optimization-Lab/)
+[Open the interactive lab](https://rozias0925.github.io/FY26-Optimization-Lab/) · [Mathematical implementation](lib/optimization.ts) · [Researcher profile](https://rozias0925.github.io/Rozias-Website/index_en.html)
 
-第一次打開專案時，請先看 **`從這裡開始.md`**。那份檔案只列出真正需要認識的內容，也會解釋哪些自動產生的資料夾可以完全忽略。
+## What the lab investigates
 
-## 怎麼打開
+| Landscape | Main question |
+| --- | --- |
+| Quadratic bowl | How does conditioning affect progress and oscillation? |
+| Rosenbrock valley | How do methods navigate a curved, narrow valley? |
+| Himmelblau landscape | How does initialization determine the basin reached? |
+| Double-well | Why can a small gradient indicate a saddle rather than a minimum? |
+| Three-hump camel | Why does convergence to a local minimum not imply global optimality? |
 
-在這個資料夾開啟終端機，執行：
+The methods are **Gradient Descent, Momentum, Adam, Newton, and BFGS**. Objective values, gradients, and Hessians are evaluated by the numerical core rather than inferred from the animation.
 
-```powershell
+## Experimental workflow
+
+1. Choose a landscape, starting point, optimizers, and parameters, or load a preset.
+2. Run the comparison and inspect the trajectories and loss curves.
+3. Pause, replay, adjust playback speed, or move to a specific iteration.
+4. Compare final loss, position, gradient norm, stopping status, evaluation counts, and the gap to the known global minimum.
+
+Displayed results remain bound to the settings used for that run. Editing the setup does not reinterpret an earlier experiment.
+
+The explanations distinguish iteration count from computational cost, handle tied iteration counts, and separate local convergence from global solution quality. A flat loss curve is not treated as sufficient evidence of convergence.
+
+## Implementation and scope
+
+- [lib/optimization.ts](lib/optimization.ts): objective functions, analytic derivatives, optimizers, and stopping logic.
+- [components/optimization-lab.tsx](components/optimization-lab.tsx): experiment state, controls, result ledger, and explanations.
+- [components/optimization-plot.tsx](components/optimization-plot.tsx): surfaces, trajectories, loss curves, and plot interaction.
+- [components/math.tsx](components/math.tsx): KaTeX formula rendering.
+
+Built with **TypeScript, React, Vinext/Vite, and KaTeX**. Experiments run locally in the browser; they do not require a backend, database, or external dataset.
+
+## Run locally
+
+Use Node.js **22.13 or later** and pnpm **10**:
+
+```bash
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-然後用瀏覽器打開 `http://localhost:3000`。
+Open `http://localhost:3000/`. To check TypeScript types, run `pnpm exec tsc --noEmit`.
 
-## 主要檔案
+The [GitHub Pages workflow](.github/workflows/deploy-pages.yml) builds the static export and prepares its repository-specific asset paths. For a guide to the project files, see [從這裡開始.md](從這裡開始.md).
 
-### `app/page.tsx`
+## Limitations
 
-網站首頁入口。它的工作很單純：載入 `OptimizationLab` 主畫面。
-
-### `app/layout.tsx`
-
-整個網站共用的外框與 metadata，包括網站標題、描述、字體，以及 KaTeX 數學式樣式。
-
-### `app/globals.css`
-
-全站視覺設定，包括淺色背景、顏色、字體、邊框與共用 CSS。想調整整體風格時，先看這裡。
-
-### `components/optimization-lab.tsx`
-
-網站的主要互動流程：
-
-- 中文／English 切換與所有教學文字
-- Objective、Optimizer 與 hyperparameter 控制
-- Preset experiments
-- 執行後自動捲動與三秒倒數
-- 動畫播放、暫停、速度與完成狀態
-- Result ledger、數學版 Optimizer 原理與動態 Takeaways
-
-想改畫面順序、按鈕文字、教學內容或倒數流程，主要就是修改這個檔案。
-
-### `components/optimization-plot.tsx`
-
-負責兩張圖：
-
-- Loss surface 的 contour 與 optimizer trajectories
-- Loss vs. Iteration curve
-
-它也負責滑鼠點擊座標、滾輪縮放、等比例座標、熱力圖、動畫插值與 Canvas 繪圖。想調整圖表外觀或動畫節奏的呈現方式，就看這裡。
-
-### `components/math.tsx`
-
-把 LaTeX 字串交給 KaTeX，輸出正式的數學排版。所有數學式最後都會經過這個小元件。
-
-### `lib/optimization.ts`
-
-網站的數學核心，與畫面顯示分開：
-
-- Quadratic、Rosenbrock、Himmelblau、Double-Well 與 Three-Hump Camel objective functions
-- Function value、Gradient、Hessian
-- Gradient Descent、Momentum、Adam、Newton、BFGS
-- Convergence、divergence 與 numerical failure 判斷
-- 統一的 `OptimizationResult` 結果格式
-
-想修改 optimizer 算法、停止條件或新增 objective function，就從這裡開始。
-
-### `components/ui/`
-
-由 shadcn 提供的標準 UI 元件，例如 Button、Slider、Select、Tabs、Checkbox。這些是底層積木，通常不需要直接修改。
-
-### `lib/utils.ts` 與 `hooks/`
-
-shadcn 元件使用的共用工具與 responsive helper。除非要改底層 UI 系統，否則可以先不用碰。
-
-## 專案設定檔
-
-- `package.json`：專案名稱、啟動／建置指令與使用的套件。
-- `pnpm-lock.yaml`：鎖定每個套件的精確版本，不建議手動修改。
-- `pnpm-workspace.yaml`：pnpm 的本機建置安全設定。
-- `tsconfig.json`：TypeScript 規則與路徑設定。
-- `vite.config.ts`：Vinext／Vite 的開發與正式建置設定。
-- `next.config.ts`：Next-compatible framework 設定。
-- `.openai/hosting.json`：未來要使用 Sites 發布時的 hosting 設定；目前仍維持本機版本。
-
-## 想修改什麼，要去哪裡？
-
-| 想修改的內容                    | 主要檔案                                                   |
-| ------------------------------- | ---------------------------------------------------------- |
-| 中文文字、段落順序、按鈕        | `components/optimization-lab.tsx`                          |
-| 倒數與動畫速度                  | `components/optimization-lab.tsx`                          |
-| Contour、trajectory、loss curve | `components/optimization-plot.tsx`                         |
-| 數學公式排版                    | `components/math.tsx` 與 `components/optimization-lab.tsx` |
-| Objective 或 Optimizer 數學算法 | `lib/optimization.ts`                                      |
-| 全站顏色與風格                  | `app/globals.css`                                          |
-| 網站標題與描述                  | `app/layout.tsx`                                           |
+This is an educational study of small, analytically specified problems, not a benchmark establishing general optimizer superiority. Results depend on initialization, hyperparameters, stopping rules, and implementation safeguards. In particular, the Newton and BFGS implementations use guarded steps; the animations should not be interpreted as unmodified textbook iterations.
