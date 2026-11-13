@@ -1,5 +1,10 @@
 # Optimization Visual Lab
 
+## At a glance for reviewers
+
+**Project type:** interactive optimization software for five analytic 2D landscapes and five optimizers. **What it demonstrates:** objective/derivative implementation, controlled algorithm comparisons, and interpretation of stopping behavior versus global optimality. **Suggested first visit:** [open the lab](https://rozias0925.github.io/FY26-Optimization-Lab/), select Rosenbrock, and compare Gradient Descent, Newton, and BFGS under the same starting point. **Inspect the implementation:** [optimization core](lib/optimization.ts) and [UI](components/optimization-lab.tsx). This is an educational comparison, not an empirical claim of general optimizer superiority.
+
+
 A bilingual, browser-based laboratory for understanding how the shape of an objective function changes an optimization algorithm's path and stopping behavior. It compares five optimizers on five two-dimensional landscapes, connecting mathematical update rules with trajectories, loss curves, and numerical diagnostics. The numerical implementation and website source are included in this repository.
 
 [Open the interactive lab](https://rozias0925.github.io/FY26-Optimization-Lab/) · [Mathematical implementation](lib/optimization.ts) · [Researcher profile](https://rozias0925.github.io/Rozias-Website/index_en.html)
